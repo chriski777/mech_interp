@@ -1,3 +1,4 @@
+
 # Multi-axis Neurofeedback in Language Models
 
 by **[Chris Ki](https://chriski.me)**
@@ -18,22 +19,75 @@ In this work, we give the model **multiple neurofeedback labels** per example an
 
 **Model:** [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct). 
 
-**Dataset:** Sentences are drawn from the [ETHICS commonsense morality dataset](https://arxiv.org/abs/2008.02275) (short scenarios only, $n=10,000$ sentences, each with a binary morality label: 0 = acceptable, 1 = unacceptable). 60% of the sentences are allocated as training data for identifying the axes neurofeedback will be provided along and the remaining 40% of the sentences are held out for the reporting and control tasks. 
+**Dataset:** Sentences are drawn from the [ETHICS commonsense morality dataset](https://arxiv.org/abs/2008.02275) (short scenarios only, $n=10,000$ sentences, each with a binary morality label: 0 = acceptable, 1 = unacceptable). 60% of the sentences are allocated as training data for fitting axe and the remaining 40% of the sentences are held out for the reporting and control tasks. 
 
-**Activations:** The activation vector $\mathbf{x}_i \in \mathbb{R}^d$ at each layer is the mean of the residual stream vectors across the $i$-th sentence's tokens, where $i \in [1, n]$ and $d$ is the residual stream width.
+### Identifying Axes 
 
-### Axes
+**Activation extraction.** To identify the axes used for the reporting and control task, we perform a forward pass for each sentence $\mathcal{S}_i$ using the following template:  
 
-For each layer of interest (layers 0, 6, 13, 20, 27 — corresponds to approximately 0/25/50/75/100% of network depth), we fit two types of axes on the activations observed for the training data:
+```
+system: <SYSTEM_MSG>
+user:   Say something.
+assistant: <sentence>   ← pre-filled
+```
+
+For each layer of interest, we extract the activation vector $\mathbf{x}_i \in \mathbb{R}^{d}$ ($d = 3072$ for our selected model) for the sentence $\mathcal{S}_i$ by taking the residual stream output of that layer.
+
+**Axis Fitting.** For each layer of interest, we fit two types of axes on the activations observed for the training data:
 
 - **Logistic Regression (LR) axis** — the decision boundary of a logistic regression classifier trained to predict the morality label.
-- **PC axes** — individual principal components (PC1, PC2, …) from a PCA fit on the training activations.
+- **PC axes** — individual principal components (PC1, PC2, …) from a PCA fit on the training data.
 
 Binary axis-based labels (0/1) are assigned using each sentence's activation vector $\mathbf{x}_i$:
 
 $$\text{label}_i = \mathbf{1}[\mathbf{w} \cdot \mathbf{x}_i + b \geq 0] \quad \text{(LR axis)}, \qquad \mathbf{1}[(\mathbf{x}_i - \boldsymbol{\mu}) \cdot \mathbf{u}_k \geq 0] \quad \text{(PC)}$$
 
 where $\mathbf{w}, \boldsymbol{\mu}, \mathbf{u}_k \in \mathbb{R}^d$, $b \in \mathbb{R}$, and $\mathbf{u}_k$ is the $k$-th principal component.
+
+For the selected model ([Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)),  we fit axes using activations from layers 0, 6, 13, 20, and 27 (corresponding approximately to 0%, 25%, 50%, 75%, and 100% of network depth, respectively).
+
+### Reporting Task
+
+For each trial of this task, we construct a prompt containing 200 in-context examples, each consisting of a sentence paired with one or more axis-based labels (0 or 1). We consider two settings:
+
+1. **Single-axis setting**: Each sentence is paired with a binary label derived from one axis.
+2. **Two-axis setting**: Each sentence is paired with two binary labels, each derived from a different axis.
+
+At the beginning of each prompt, we include a system message adapted from the original authors' `meta_prompts.yml`, which describes axis-based labels as binary "scores" (0 or 1). The prompt follows the structure below for the single-axis setting:
+```
+<system message>
+
+User: Say something.
+Assistant: It is wrong to steal from a store. [Score: 0]
+
+... (198 more examples) ...
+
+User: Say something.
+Assistant: She donated all her savings to charity. [Score: 1]
+```
+
+For the two-axis setting, each  example instead follows the format:
+```
+User: Say something.
+Assistant: <sentence> [Score X: {0 or 1}, Score Y: {0 or 1}]
+```
+For the two-axis setting, we additionally evaluate a flipped version of the prompt in which the positions of Score X and Score Y are reversed. Both score orderings are used in the reporting and control tasks to account for potential effects of score ordering, as the prediction of the second score has access to the first score.
+
+Although all axis-based labels are provided in the prompt, we evaluate the model's predictions using the next-token logits immediately preceding each label token (0 or 1). Thus, each prediction is based only on the preceding context, without access to the corresponding label or any subsequent tokens. All predictions for a given prompt are extracted from a single forward pass.
+
+### Control Task
+
+In this task, we provide the model with 
+
+### Task conditions
+
+For the reporting and control tasks, we test the following two-axis conditions:
+
+1. **Within-layer:** PC1 and PC2 at layer 13 (50% depth, the same relative depth as layer 16 of Llama-3.1-8B in the original paper) test whether the model can independently report and control activations along two axes at the same depth. Projections onto different PCs are uncorrelated by construction on the sentences used to fit the axes, and they remain nearly uncorrelated on the held-out sentences used in the prompts (projection correlation $r= −0.01$, label correlation $\phi = 0.04$).
+2. **Across-layer:** the LR axes at layers 6 and 20 (25% and 75% depth) test whether the model can independently report and control the same kind of axis at two different depths. Because both axes are fit to predict the same morality labels, and the residual stream carries information forward from layer 6 to layer 20, their projections are strongly correlated on held-out sentences ($ r= 0.81, \phi = 0.65$).
+
+## Results: Reporting Task 
+
 
 ### Prompt structure
 
@@ -53,23 +107,11 @@ Assistant: <sentence> [Score X: {0 or 1}, Score Y: {0 or 1}]
 
 The system message is adapted from the original authors' `meta_prompts.yml` to present axis-based labels as "scores" that are either 0 or 1. On each trial, the model guesses the score(s) for a new sentence (reporting) or generates a sentence hitting a target score combination (control).
 
-### Task conditions
+ Each trial is one random draw of 200 sentences from the test set (20 trials total). For the two-axis conditions, each trial is run under all 4 combinations of label order (Score X first vs. Score Y first) and label flip (original vs. all axis-based labels inverted) to control for position and base-rate biases, and results are averaged across them.
 
-For the reporting and control tasks, we test the following two-axis conditions:
-
-1. **Within-layer:** PC1 and PC2 at layer 13 (50% depth, the same relative depth as layer 16 of Llama-3.1-8B in the original paper) test whether the model can independently report and control activations along two axes at the same depth. Projections onto different PCs are uncorrelated by construction on the sentences used to fit the axes, and they remain nearly uncorrelated on the held-out sentences used in the prompts (projection correlation $r= −0.01$, label correlation $\phi = 0.04$).
-2. **Across-layer:** the LR axes at layers 6 and 20 (25% and 75% depth) test whether the model can independently report and control the same kind of axis at two different depths. Because both axes are fit to predict the same morality labels, and the residual stream carries information forward from layer 6 to layer 20, their projections are strongly correlated on held-out sentences ($r = 0.81, \phi = 0.65$).
-
-
-## Reporting Task Results
-We first asked whether a model can report the axis-based labels.
-
-Each trial is one random draw of 200 sentences from the test set (20 trials total). For the two-axis conditions, each trial is run under all 4 combinations of label order (Score X first vs. Score Y first) and label flip (original vs. all axis-based labels inverted) to control for position and base-rate biases, and results are averaged across them.
-
-### Within-layer results
-
+### Within-layer
 ![Within-layer reporting](figures/reporting_L13_PC1+PC2.png)
 
-### Across-layer results
 
+### Across-layer
 ![Across-layer reporting](figures/reporting_LR_L6+L20.png)
