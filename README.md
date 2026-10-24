@@ -15,6 +15,9 @@ In this work, we give the model **multiple neurofeedback labels** per example an
 
 2. **Across layers:** Can the model report and control activations along the same axis type at two depths (e.g., the LR axis at an early layer and a later layer) independently?
 
+> [!CAUTION]
+> TODO: SUMMARIZE OUR FINDINGS
+
 ## Table of Contents
 
 - [Methods](#methods)
@@ -31,7 +34,7 @@ In this work, we give the model **multiple neurofeedback labels** per example an
 
 **Model:** [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct). 
 
-**Dataset:** Sentences are drawn from the [ETHICS commonsense morality dataset](https://arxiv.org/abs/2008.02275) (short scenarios only, $n=10,000$ sentences, each with a binary morality label: 0 = acceptable, 1 = unacceptable). 60% of the sentences are allocated as training data for fitting axe and the remaining 40% of the sentences are held out for the reporting and control tasks. 
+**Dataset:** Sentences are drawn from the [ETHICS commonsense morality dataset](https://arxiv.org/abs/2008.02275) (short scenarios only, $n=7,544$ sentences, each with a binary morality label: 0 = acceptable, 1 = unacceptable). 60% of the sentences are allocated as training data for fitting axe and the remaining 40% of the sentences are held out for the reporting and control tasks. 
 
 ### Identifying Axes 
 
@@ -90,7 +93,7 @@ Two additional counterbalanced label assignments are applied to every draw in a 
 - **Reversing Label order (two-axes setting only)**: each trial is also run with Score Y written before Score X in every example. When predicting whichever score comes second, the model can use the score just shown before it, so running both orders lets us compare each score’s prediction with and without access to the other score.
 - **Label flipping (both settings):** each trial is also run with every shown score flipped (1 − score). This follows the counterbalanced design of the original paper and cancels any effect of the score digits themselves.
 
-Each trial therefore yields 2 prompts in the single-axis setting (2 flips) and 4 in the two-axes setting (2 orders × 2 flips). We have 100 trials per task condition.
+For each task condition, we generate 100 trials, each consisting of 200 sampled sentences from the held-out set. Each trial yields two prompts in the single-axis setting (two flips) and four prompts in the two-axis setting (two score orderings × two flips).
 
 Although all labels appear in the prompt, the model's prediction for each label is read from the next-token logits at the position immediately before that label's digit: P("1") is the softmax over the logits of the tokens "0" and "1". Each prediction is based only on the preceding context, without access to that label or anything after it, so a prediction at the $t$-th example reflects $t-1$ in-context examples before it. All predictions for a prompt are read from a single forward pass.
 
@@ -116,7 +119,7 @@ Assistant: ← model generates here
 
 In the two-axes setting, the final instruction specifies both target scores, e.g. `Score X: 1, Score Y: 0`.
 
-The same label-order and label-flip counterbalancing as the reporting task is applied. Each trial therefore yields 2 prompts in the single-axis setting and 4 in the two-axes setting. We have 100 trials per task condition.
+The same label-order and label-flip counterbalancing as the reporting task is applied. For each task condition, we generate 100 trials, each consisting of 200 sampled sentences from the held-out set. Each trial therefore yields two prompts in the single-axis setting (two flips) and four prompts in the two-axis setting (two score orderings × two flips).
 
 For the control task, we test two modes, which differ only in where the reply comes from:
 - **Explicit control:** the model generates its own reply, and the activations of that reply are read afterward.
@@ -137,12 +140,28 @@ For the reporting and control tasks, we test six conditions. All conditions use 
 
 ## Results
 
-### Reporting Task: Within-layer
-![Within-layer reporting](figures/reporting_L13_PC1+PC2.png)
+We report results for the reporting task and then the control task, each for the within-layer (L13 PC1 + PC2) and across-layer (L6 + L20 LR) conditions, with the single-axis conditions as baselines.
 
+### Reporting Task: Within-layer
+  
+<a id="fig-reporting-within"></a>
+<p align="center">
+  <img src="figures/reporting_L13_PC1+PC2.png" width="80%"><br>
+  <em><b>Figure 1. Within-layer reporting performance is similar in the single-axis and two-axes settings. </b> Each column shows reporting performance for a target score derived from layer 13 PC1 (left) or PC2 (right). Accuracy (top) and cross-entropy (bottom) are plotted against the number of preceding labeled examples.  Curves show the single-axis setting (blue), the two-axis setting with the target score reported first (orange) or second (green, dashed), and prediction of the target score from the other axis-based label alone (gray, dotted). Chance is shown in gray (solid). Bands indicate ±1 SEM across 200 prompts (100 trials × 2 flips per curve).</em>
+</p>
+
+Performance is similar when the target score is reported alone (blue) or first in the two-axes setting (orange), but slightly lower when reported second (green, dashed). Predicting the target score from the other axis-based label alone (gray, dotted) remains near chance (gray, solid).
 
 ### Reporting Task: Across-layer
-![Across-layer reporting](figures/reporting_LR_L6+L20.png)
+<a id="fig-reporting-across"></a>
+<p align="center">
+  <img src="figures/reporting_LR_L6+L20.png" width="80%"><br>
+  <em><b>Figure 2. Across-layer reporting performance is similar in the single-axis and two-axes settings. </b> Each column shows reporting performance for a target score derived from layer 6 LR (left) or layer 20 LR (right). Accuracy (top) and cross-entropy (bottom) are plotted against the number of preceding labeled examples.  Curves show the single-axis setting (blue), the two-axis setting with the target score reported first (orange) or second (green, dashed), and prediction of the target score from the other axis-based label alone (gray, dotted). Chance is shown in gray (solid). Bands indicate ±1 SEM across 200 prompts (100 trials × 2 flips per curve)</em>
+</p>
+Accuracy is similar when the target score is reported alone (blue), first (orange), or second (green, dashed), although cross-entropy is lower in the two-axis setting. Predicting the target score from the other axis-based label alone (gray, dotted) achieves similar accuracy, indicating substantial overlap between the two labels. 
 
-### Control Task
+
+### Control Task: Within-Layer
 The same sentence is used for every prompt in a trial (all targets, score flips and score orders). Because the words are identical across score targets, any shift toward the target scores must come from the model representing the same sentence differently.
+
+### Control Task: Across-Layer
