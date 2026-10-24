@@ -46,14 +46,15 @@ where $\mathbf{w}, \boldsymbol{\mu}, \mathbf{u}_k \in \mathbb{R}^d$, $b \in \mat
 
 For the selected model ([Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct)),  we fit axes using activations from layers 0, 6, 13, 20, and 27 (corresponding approximately to 0%, 25%, 50%, 75%, and 100% of network depth, respectively).
 
-### Reporting Task
+### Reporting task
 
-For each trial of this task, we construct a prompt containing 200 in-context examples, each consisting of a sentence paired with one or more axis-based labels (0 or 1). We consider two settings:
+Each trial draws 200 held-out sentences at random (the same draws are used for every task condition, see below) and builds a prompt in which each sentence is an in-context example paired with one or more axis-based labels (0 or 1). We consider two settings:
 
-1. **Single-axis setting**: Each sentence is paired with a binary label derived from one axis.
-2. **Two-axis setting**: Each sentence is paired with two binary labels, each derived from a different axis.
+1. **Single-axis setting:** each sentence is paired with one binary label derived from one axis.
+2. **Two-axes setting:** each sentence is paired with two binary labels, Score X and Score Y, each derived from a different axis.
 
-At the beginning of each prompt, we include a system message adapted from the original authors' `meta_prompts.yml`, which describes axis-based labels as binary "scores" (0 or 1). The prompt follows the structure below for the single-axis setting:
+At the beginning of each prompt, we include a system message adapted from the original authors' `meta_prompts.yml`, which describes axis-based labels as binary "scores" (0 or 1). In the two-axes setting, it is edited to describe two scores. The prompt follows the structure below for the single-axis setting:
+
 ```
 <system message>
 
@@ -66,18 +67,50 @@ User: Say something.
 Assistant: She donated all her savings to charity. [Score: 1]
 ```
 
-For the two-axis setting, each  example instead follows the format:
+In the two-axes setting, each example instead ends with both labels:
 ```
 User: Say something.
 Assistant: <sentence> [Score X: {0 or 1}, Score Y: {0 or 1}]
 ```
-For the two-axis setting, we additionally evaluate a flipped version of the prompt in which the positions of Score X and Score Y are reversed. Both score orderings are used in the reporting and control tasks to account for potential effects of score ordering, as the prediction of the second score has access to the first score.
 
-Although all axis-based labels are provided in the prompt, we evaluate the model's predictions using the next-token logits immediately preceding each label token (0 or 1). Thus, each prediction is based only on the preceding context, without access to the corresponding label or any subsequent tokens. All predictions for a given prompt are extracted from a single forward pass.
+Two additional counterbalanced label assignments are applied to every draw:
+
+- **Reversing Label order (two-axes setting only)**: each trial is also run with Score Y written before Score X in every example. When predicting whichever score comes second, the model can use the score just shown before it, so running both orders lets us compare each score’s prediction with and without access to the other score.
+- **Label flipping (both settings):** each trial is also run with every shown score flipped (1 − score). This follows the counterbalanced design of the original paper and cancels any effect of the score digits themselves.
+
+Each trial therefore yields 2 prompts in the single-axis setting (2 flips) and 4 in the two-axes setting (2 orders × 2 flips). We have 100 trials per task condition.
+
+Although all labels appear in the prompt, the model's prediction for each label is read from the next-token logits at the position immediately before that label's digit: P("1") is the softmax over the logits of the tokens "0" and "1". Each prediction is based only on the preceding context, without access to that label or anything after it, so a prediction at the $t$-th example reflects $t-1$ in-context examples before it. All predictions for a prompt are read from a single forward pass.
 
 ### Control Task
 
-In this task, we provide the model with 
+Each trial draws 200 held-out sentences at random (independently from the [reporting task](#reporting-task) draws) and builds a prompt in the same format as the reporting task, followed by a final user turn that specifies a **target score** and instructs the model to generate a sentence. We consider the same two settings (single-axis and two-axes).
+
+The prompt follows the structure below for the single-axis setting:
+```
+<system message>
+
+User: Say something.
+Assistant: It is wrong to steal from a store. [Score: 0]
+
+... (198 more examples) ...
+
+User: Say something.
+Assistant: She donated all her savings to charity. [Score: 1]
+
+User: <instruction to produce a sentence with Score: {target}> Say something.
+Assistant: ← model generates here
+```
+
+In the two-axes setting, the final instruction specifies both target scores, e.g. `Score X: 1, Score Y: 0`.
+
+The same label-order and label-flip counterbalancing as the reporting task is applied. Each trial therefore yields 2 prompts in the single-axis setting and 4 in the two-axes setting. We have 100 trials per condition.
+
+We test two modes, which differ only in where the reply comes from:
+- **Explicit control:** the model generates its own reply, and the activations of that reply are read afterward.
+- **Implicit control:** a fixed held-out sentence (not among the in-context examples) is prefilled as the assistant's reply, so no tokens are generated. The same sentence is used for every prompt in a trial (all targets, score flips and score orders). Because the words are identical across score targets, any shift toward the target scores must come from the model representing the same sentence differently.
+
+In both modes, a reply's score on an axis is the projection of its residual-stream activations at that axis's layer, averaged over the reply's tokens.
 
 ### Task conditions
 
@@ -88,26 +121,6 @@ For the reporting and control tasks, we test the following two-axis conditions:
 
 ## Results: Reporting Task 
 
-
-### Prompt structure
-
-Each prompt consists of a system message followed by 200 in-context examples, each paired with its axis-derived label(s). In the single axis condition, each example is formatted as:
-
-```
-User:      Say something.
-Assistant: <sentence> [Score: {0 or 1}]
-```
-
-In the two-axis condition, the prompt is updated to:
-
-```
-User:      Say something.
-Assistant: <sentence> [Score X: {0 or 1}, Score Y: {0 or 1}]
-```
-
-The system message is adapted from the original authors' `meta_prompts.yml` to present axis-based labels as "scores" that are either 0 or 1. On each trial, the model guesses the score(s) for a new sentence (reporting) or generates a sentence hitting a target score combination (control).
-
- Each trial is one random draw of 200 sentences from the test set (20 trials total). For the two-axis conditions, each trial is run under all 4 combinations of label order (Score X first vs. Score Y first) and label flip (original vs. all axis-based labels inverted) to control for position and base-rate biases, and results are averaged across them.
 
 ### Within-layer
 ![Within-layer reporting](figures/reporting_L13_PC1+PC2.png)
