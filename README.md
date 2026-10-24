@@ -15,6 +15,18 @@ In this work, we give the model **multiple neurofeedback labels** per example an
 
 2. **Across layers:** Can the model report and control activations along the same axis type at two depths (e.g., the LR axis at an early layer and a later layer) independently?
 
+## Table of Contents
+
+- [Methods](#methods)
+  - [Identifying Axes](#identifying-axes)
+  - [Reporting Task](#reporting-task)
+  - [Control Task](#control-task)
+  - [Task Conditions](#task-conditions)
+- [Results](#results)
+  - [Reporting Task: Within-layer](#reporting-task-within-layer)
+  - [Reporting Task: Across-layer](#reporting-task-across-layer)
+  - [Control Task](#control-task-1)
+
 ## Methods
 
 **Model:** [Llama-3.2-3B-Instruct](https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct). 
@@ -116,9 +128,9 @@ In both modes, a reply’s projection onto an axis is computed from its residual
 
 For the reporting and control tasks, we test six conditions. All conditions use the same sentence draws for a given trial, so they are compared on identical sentences.
 
-**Single-axis setting (four conditions):** L13 PC1, L13 PC2, L6 LR and L20 LR, i.e. each axis of the two-axis conditions on its own. These check that we reproduce the original single-axis results for these axes and give a baseline for how well each axis is reported and controlled alone.
+**Single-axis setting (four conditions):** L13 PC1, L13 PC2, L6 LR and L20 LR, i.e. each axis on its own. These check that we reproduce the original single-axis results for these axes and give a baseline for how well each axis is reported and controlled alone.
 
-**Two-axes setting (two conditions):**
+**Two-axes setting (two conditions):** Here, we try to answer the original questions we posed on whether neurofeedback can be used to control activations along multiple axes. 
 
 1. **Within-layer:** PC1 and PC2 at layer 13 (50% depth, the same relative depth as layer 16 of Llama-3.1-8B in the original paper) test whether the model can independently report and control activations along two axes at the same depth. Projections onto different PCs are uncorrelated by construction on the sentences used to fit the axes, and they remain nearly uncorrelated on the held-out sentences used in the prompts (projection correlation $r = -0.01$, label correlation $\phi = 0.04$).
 2. **Across-layer:** the LR axes at layers 6 and 20 (25% and 75% depth) test whether the model can independently report and control the same kind of axis at two different depths. Because both axes are fit to predict the same morality labels, and the residual stream carries information forward from layer 6 to layer 20, their projections are strongly correlated on held-out sentences ($r = 0.81$, $\phi = 0.65$).
@@ -132,5 +144,5 @@ For the reporting and control tasks, we test six conditions. All conditions use 
 ### Reporting Task: Across-layer
 ![Across-layer reporting](figures/reporting_LR_L6+L20.png)
 
-## Control Task
+### Control Task
 The same sentence is used for every prompt in a trial (all targets, score flips and score orders). Because the words are identical across score targets, any shift toward the target scores must come from the model representing the same sentence differently.
